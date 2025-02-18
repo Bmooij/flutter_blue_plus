@@ -31,18 +31,20 @@ public static class FlutterBlePlus
     {
         try
         {
-            Console.Write(args.Advertisement.LocalName);
-            Console.Write(" ");
-            Console.Write(UlongToMacAddress(args.BluetoothAddress));
-            Console.Write(" ");
-    
+            var macAddress = UlongToMacAddress(args.BluetoothAddress);
+            var localName = args.Advertisement.LocalName;
+
             var device = await BluetoothLEDevice.FromBluetoothAddressAsync(args.BluetoothAddress);
-            if (device != null)
-            {
-                Console.WriteLine(device.DeviceId);   
-            }
-    
-            Console.WriteLine();
+            var deviceId = device?.DeviceId ?? "Unknown";
+
+            var result = $"{localName} {macAddress} {deviceId}";
+
+            Console.WriteLine(result);
+
+            // Call the callback if it's registered
+            if (_deviceFoundCallback == null) return;
+            var deviceInfoPtr = Marshal.StringToHGlobalAnsi(result);
+            _deviceFoundCallback(deviceInfoPtr);
         }
         catch (Exception e)
         {
@@ -60,5 +62,25 @@ public static class FlutterBlePlus
     public static void StopScan()
     {
         Watcher.Stop();
+    }
+    
+    // Define the delegate type that matches the callback signature
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void DeviceFoundCallback(IntPtr deviceInfoPtr);
+    private static DeviceFoundCallback? _deviceFoundCallback;
+    
+    [UnmanagedCallersOnly(EntryPoint = "RegisterDeviceFoundCallback")]
+    public static void RegisterDeviceFoundCallback(IntPtr callbackPtr)
+    {
+        _deviceFoundCallback = callbackPtr == IntPtr.Zero 
+            ? null 
+            : Marshal.GetDelegateForFunctionPointer<DeviceFoundCallback>(callbackPtr);
+    }
+
+    [UnmanagedCallersOnly(EntryPoint = "FreeMemory")]
+    public static void FreeMemory(IntPtr ptr)
+    {
+        if (ptr == IntPtr.Zero) return;
+        Marshal.FreeHGlobal(ptr);
     }
 }

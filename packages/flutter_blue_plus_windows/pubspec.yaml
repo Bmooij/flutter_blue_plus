@@ -4,7 +4,7 @@ version: 3.0.0
 homepage: https://github.com/chipweinberger/flutter_blue_plus
 
 environment:
-  sdk: ^3.0.0
+  sdk: ^3.1.0
   flutter: '>=3.7.0'
 
 dependencies:
@@ -24,4 +24,4 @@ flutter:
       windows:
         dartPluginClass: FlutterBluePlusWindows
   assets:
-    - assets/FlutterBlePlus.dll
+    - solution/assets/FlutterBlePlus.dll

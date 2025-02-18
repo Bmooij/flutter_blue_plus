@@ -6,8 +6,23 @@ import 'src/flutter_ble_plus_bindings.dart';
 
 final class FlutterBluePlusWindows extends FlutterBluePlusPlatform {
 
+  final _onScanResponseController = StreamController<BmScanResponse>.broadcast();
+
+  static final _wrapper = FlutterBlePlusBindings();
+
+  @override
+  Stream<BmScanResponse> get onScanResponse {
+    return _onScanResponseController.stream;
+  }
+
+  FlutterBluePlusWindows._() {
+    _wrapper.onDeviceFound.listen((deviceInfo) {
+      print('FROM C# $deviceInfo');
+    });
+  }
+
   static void registerWith() {
-    FlutterBluePlusPlatform.instance = FlutterBluePlusWindows();
+    FlutterBluePlusPlatform.instance = FlutterBluePlusWindows._();
   }
 
   @override
@@ -32,7 +47,7 @@ final class FlutterBluePlusWindows extends FlutterBluePlusPlatform {
   Future<bool> startScan(
     BmScanSettings request,
   ) {
-    FlutterBlePlusBindings.startScan();
+    _wrapper.startScan();
     return Future.value(true);
   }
 
@@ -40,7 +55,7 @@ final class FlutterBluePlusWindows extends FlutterBluePlusPlatform {
   Future<bool> stopScan(
     BmStopScanRequest request,
   ) {
-    FlutterBlePlusBindings.stopScan();
+    _wrapper.stopScan();
     return Future.value(true);
   }
 }
