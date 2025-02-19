@@ -1,6 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
+using FlutterBlePlus.Models;
 
 namespace FlutterBlePlus;
 
@@ -15,23 +16,12 @@ public static class FlutterBlePlus
     {
         Watcher.Received += WatcherOnReceived;   
     }
-    
-    static string UlongToMacAddress(ulong mac)
-    {
-        return string.Format("{0:X2}:{1:X2}:{2:X2}:{3:X2}:{4:X2}:{5:X2}",
-            (mac >> 40) & 0xFF,
-            (mac >> 32) & 0xFF,
-            (mac >> 24) & 0xFF,
-            (mac >> 16) & 0xFF,
-            (mac >> 8) & 0xFF,
-            mac & 0xFF);
-    }
 
     private static async void WatcherOnReceived(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs args)
     {
         try
         {
-            var macAddress = UlongToMacAddress(args.BluetoothAddress);
+            var macAddress = Utils.UlongToMacAddress(args.BluetoothAddress);
             var localName = args.Advertisement.LocalName;
 
             var device = await BluetoothLEDevice.FromBluetoothAddressAsync(args.BluetoothAddress);
@@ -40,10 +30,31 @@ public static class FlutterBlePlus
             var result = $"{localName} {macAddress} {deviceId}";
 
             Console.WriteLine(result);
+            
+            // Get manufacturer data if available
+            int manufacturerId = 0;
+            if (args.Advertisement.ManufacturerData.Count > 0)
+            {
+                manufacturerId = (int)args.Advertisement.ManufacturerData[0].CompanyId;
+            }
 
             // Call the callback if it's registered
             if (_scanResultCallback == null) return;
-            var deviceInfoPtr = Marshal.StringToHGlobalAnsi(result);
+
+            var scanResult = new ScanResult
+            {
+                MacAddress = Marshal.StringToHGlobalAnsi(macAddress),
+                Name = Marshal.StringToHGlobalAnsi(localName),
+                Rssi = args.RawSignalStrengthInDBm,
+                ManufacturerId = manufacturerId,
+                Latitude = 0.0f,
+                Longitude = 0.0f
+            };
+            
+            // Allocate memory for the struct and copy the struct to it
+            IntPtr deviceInfoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<ScanResult>());
+            Marshal.StructureToPtr(scanResult, deviceInfoPtr, false);
+            
             _scanResultCallback(deviceInfoPtr);
         }
         catch (Exception e)
@@ -78,9 +89,16 @@ public static class FlutterBlePlus
     }
 
     [UnmanagedCallersOnly(EntryPoint = "FreeScanResultMemory")]
-    public static void FreeScanResultMemory(IntPtr ptr)
+    public static void FreeScanResultMemory(IntPtr scanResultPtr)
     {
-        if (ptr == IntPtr.Zero) return;
-        Marshal.FreeHGlobal(ptr);
+        if (scanResultPtr == IntPtr.Zero) return;
+        // Get the struct to free the string pointers
+        var deviceInfo = Marshal.PtrToStructure<ScanResult>(scanResultPtr);
+        
+        Marshal.FreeHGlobal(deviceInfo.Name);
+        Marshal.FreeHGlobal(deviceInfo.MacAddress);
+        
+        // Free the struct memory
+        Marshal.FreeHGlobal(scanResultPtr);
     }
 }

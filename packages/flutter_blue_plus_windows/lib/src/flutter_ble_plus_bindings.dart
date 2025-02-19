@@ -2,6 +2,12 @@ import 'dart:async';
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 
+// imports of the binding models
+import 'binding_models/scan_result_binding.dart';
+
+// imports of the models
+import 'models//scan_result.dart';
+
 // Define the FFI signatures
 typedef RegisterCallbackNative = Void Function(Pointer<NativeFunction<ScanResultCallbackNative>>);
 typedef RegisterCallbackDart = void Function(Pointer<NativeFunction<ScanResultCallbackNative>>);
@@ -12,12 +18,12 @@ typedef StartScanDart = void Function();
 typedef StopScanNative = Void Function();
 typedef StopScanDart = void Function();
 
-typedef FreeMemoryNative = Void Function(Pointer<Void>);
-typedef FreeMemoryDart = void Function(Pointer<Void>);
+typedef FreeScanResultMemoryNative = Void Function(Pointer<ScanResultBinding>);
+typedef FreeScanResultMemoryDart = void Function(Pointer<ScanResultBinding>);
 
 // Define the callback signature
-typedef ScanResultCallbackNative = Void Function(Pointer<Utf8>);
-typedef ScanResultCallbackDart = void Function(Pointer<Utf8>);
+typedef ScanResultCallbackNative = Void Function(Pointer<ScanResultBinding>);
+typedef ScanResultCallbackDart = void Function(Pointer<ScanResultBinding>);
 
 class FlutterBlePlusBindings {
   // Native library
@@ -28,8 +34,8 @@ class FlutterBlePlusBindings {
   static final RegisterCallbackDart _registerScanResultCallback = _nativeLib
       .lookupFunction<RegisterCallbackNative, RegisterCallbackDart>('RegisterScanResultCallback');
 
-  static final FreeMemoryDart _freeScanResultMemory = _nativeLib
-      .lookupFunction<FreeMemoryNative, FreeMemoryDart>('FreeScanResultMemory');
+  static final FreeScanResultMemoryDart _freeScanResultMemory = _nativeLib
+      .lookupFunction<FreeScanResultMemoryNative, FreeScanResultMemoryDart>('FreeScanResultMemory');
 
   static final StartScanDart _startScan = _nativeLib
       .lookupFunction<StartScanNative, StartScanDart>('StartScan');
@@ -38,8 +44,8 @@ class FlutterBlePlusBindings {
       .lookupFunction<StopScanNative, StopScanDart>('StopScan');
 
   // Stream controller for device discovery events
-  final _scanResultStreamController = StreamController<String>.broadcast();
-  Stream<String> get onScanResult => _scanResultStreamController.stream;
+  final _scanResultStreamController = StreamController<ScanResult>.broadcast();
+  Stream<ScanResult> get onScanResult => _scanResultStreamController.stream;
 
   // Native callback instance
   late final NativeCallable<ScanResultCallbackNative> _scanResultNativeCallback;
@@ -55,15 +61,24 @@ class FlutterBlePlusBindings {
   void _setupCallbacks() {
     // Create a NativeCallable instance with the listener method
     _scanResultNativeCallback = NativeCallable<ScanResultCallbackNative>.listener(
-          (Pointer<Utf8> deviceInfoPtr) async {
-        // Convert the deviceInfo to a Dart string
-        final deviceInfo = deviceInfoPtr.toDartString();
+          (Pointer<ScanResultBinding> scanResultPtr) async {
+
+            if (scanResultPtr == nullptr) return;
+        // Extract data from the struct
+        final scanResult = ScanResult(
+          name: scanResultPtr.ref.name.toDartString(),
+          macAddress: scanResultPtr.ref.macAddress.toDartString(),
+          rssi: scanResultPtr.ref.rssi,
+          manufacturerId: scanResultPtr.ref.manufacturerId,
+          latitude: scanResultPtr.ref.latitude,
+          longitude: scanResultPtr.ref.longitude,
+        );
 
         // Add the device info to the stream
-        _scanResultStreamController.add(deviceInfo);
+        _scanResultStreamController.add(scanResult);
 
         // Free the memory allocated in the native code
-        _freeScanResultMemory(deviceInfoPtr.cast<Void>());
+        _freeScanResultMemory(scanResultPtr);
       },
     );
 
