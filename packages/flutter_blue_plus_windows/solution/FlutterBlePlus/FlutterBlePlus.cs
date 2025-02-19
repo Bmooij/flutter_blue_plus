@@ -42,9 +42,9 @@ public static class FlutterBlePlus
             Console.WriteLine(result);
 
             // Call the callback if it's registered
-            if (_deviceFoundCallback == null) return;
+            if (_scanResultCallback == null) return;
             var deviceInfoPtr = Marshal.StringToHGlobalAnsi(result);
-            _deviceFoundCallback(deviceInfoPtr);
+            _scanResultCallback(deviceInfoPtr);
         }
         catch (Exception e)
         {
@@ -66,19 +66,19 @@ public static class FlutterBlePlus
     
     // Define the delegate type that matches the callback signature
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void DeviceFoundCallback(IntPtr deviceInfoPtr);
-    private static DeviceFoundCallback? _deviceFoundCallback;
+    public delegate void ScanResultCallback(IntPtr deviceInfoPtr);
+    private static ScanResultCallback? _scanResultCallback;
     
-    [UnmanagedCallersOnly(EntryPoint = "RegisterDeviceFoundCallback")]
-    public static void RegisterDeviceFoundCallback(IntPtr callbackPtr)
+    [UnmanagedCallersOnly(EntryPoint = "RegisterScanResultCallback")]
+    public static void RegisterScanResultCallback(IntPtr callbackPtr)
     {
-        _deviceFoundCallback = callbackPtr == IntPtr.Zero 
+        _scanResultCallback = callbackPtr == IntPtr.Zero 
             ? null 
-            : Marshal.GetDelegateForFunctionPointer<DeviceFoundCallback>(callbackPtr);
+            : Marshal.GetDelegateForFunctionPointer<ScanResultCallback>(callbackPtr);
     }
 
-    [UnmanagedCallersOnly(EntryPoint = "FreeMemory")]
-    public static void FreeMemory(IntPtr ptr)
+    [UnmanagedCallersOnly(EntryPoint = "FreeScanResultMemory")]
+    public static void FreeScanResultMemory(IntPtr ptr)
     {
         if (ptr == IntPtr.Zero) return;
         Marshal.FreeHGlobal(ptr);

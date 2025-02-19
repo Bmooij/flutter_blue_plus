@@ -16,7 +16,7 @@ final class FlutterBluePlusWindows extends FlutterBluePlusPlatform {
   }
 
   FlutterBluePlusWindows._() {
-    _wrapper.onDeviceFound.listen((deviceInfo) {
+    _wrapper.onScanResult.listen((deviceInfo) {
       print('FROM C# $deviceInfo');
     });
   }

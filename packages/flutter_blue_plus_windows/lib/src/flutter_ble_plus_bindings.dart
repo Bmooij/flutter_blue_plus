@@ -3,8 +3,8 @@ import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 
 // Define the FFI signatures
-typedef RegisterCallbackNative = Void Function(Pointer<NativeFunction<DeviceFoundCallbackNative>>);
-typedef RegisterCallbackDart = void Function(Pointer<NativeFunction<DeviceFoundCallbackNative>>);
+typedef RegisterCallbackNative = Void Function(Pointer<NativeFunction<ScanResultCallbackNative>>);
+typedef RegisterCallbackDart = void Function(Pointer<NativeFunction<ScanResultCallbackNative>>);
 
 typedef StartScanNative = Void Function();
 typedef StartScanDart = void Function();
@@ -16,8 +16,8 @@ typedef FreeMemoryNative = Void Function(Pointer<Void>);
 typedef FreeMemoryDart = void Function(Pointer<Void>);
 
 // Define the callback signature
-typedef DeviceFoundCallbackNative = Void Function(Pointer<Utf8>);
-typedef DeviceFoundCallbackDart = void Function(Pointer<Utf8>);
+typedef ScanResultCallbackNative = Void Function(Pointer<Utf8>);
+typedef ScanResultCallbackDart = void Function(Pointer<Utf8>);
 
 class FlutterBlePlusBindings {
   // Native library
@@ -25,8 +25,11 @@ class FlutterBlePlusBindings {
     DynamicLibrary.open('flutter_blue_plus_windows/solution/assets/FlutterBlePlus.dll');
 
   // Load native functions
-  static final RegisterCallbackDart _registerCallback = _nativeLib
-      .lookupFunction<RegisterCallbackNative, RegisterCallbackDart>('RegisterDeviceFoundCallback');
+  static final RegisterCallbackDart _registerScanResultCallback = _nativeLib
+      .lookupFunction<RegisterCallbackNative, RegisterCallbackDart>('RegisterScanResultCallback');
+
+  static final FreeMemoryDart _freeScanResultMemory = _nativeLib
+      .lookupFunction<FreeMemoryNative, FreeMemoryDart>('FreeScanResultMemory');
 
   static final StartScanDart _startScan = _nativeLib
       .lookupFunction<StartScanNative, StartScanDart>('StartScan');
@@ -34,41 +37,38 @@ class FlutterBlePlusBindings {
   static final StopScanDart _stopScan = _nativeLib
       .lookupFunction<StopScanNative, StopScanDart>('StopScan');
 
-  static final FreeMemoryDart _freeMemory = _nativeLib
-      .lookupFunction<FreeMemoryNative, FreeMemoryDart>('FreeMemory');
-
   // Stream controller for device discovery events
-  final _deviceStreamController = StreamController<String>.broadcast();
-  Stream<String> get onDeviceFound => _deviceStreamController.stream;
+  final _scanResultStreamController = StreamController<String>.broadcast();
+  Stream<String> get onScanResult => _scanResultStreamController.stream;
 
   // Native callback instance
-  late final NativeCallable<DeviceFoundCallbackNative> _nativeCallback;
+  late final NativeCallable<ScanResultCallbackNative> _scanResultNativeCallback;
 
   // Singleton implementation
   static final FlutterBlePlusBindings _instance = FlutterBlePlusBindings._internal();
   factory FlutterBlePlusBindings() => _instance;
 
   FlutterBlePlusBindings._internal() {
-    _setupCallback();
+    _setupCallbacks();
   }
 
-  void _setupCallback() {
+  void _setupCallbacks() {
     // Create a NativeCallable instance with the listener method
-    _nativeCallback = NativeCallable<DeviceFoundCallbackNative>.listener(
-          (Pointer<Utf8> deviceInfoPtr) {
+    _scanResultNativeCallback = NativeCallable<ScanResultCallbackNative>.listener(
+          (Pointer<Utf8> deviceInfoPtr) async {
         // Convert the deviceInfo to a Dart string
         final deviceInfo = deviceInfoPtr.toDartString();
 
         // Add the device info to the stream
-        _deviceStreamController.add(deviceInfo);
+        _scanResultStreamController.add(deviceInfo);
 
         // Free the memory allocated in the native code
-        _freeMemory(deviceInfoPtr.cast<Void>());
+        _freeScanResultMemory(deviceInfoPtr.cast<Void>());
       },
     );
 
     // Register the callback with the native code
-    _registerCallback(_nativeCallback.nativeFunction);
+    _registerScanResultCallback(_scanResultNativeCallback.nativeFunction);
   }
 
   // Start scanning
@@ -84,7 +84,7 @@ class FlutterBlePlusBindings {
   // Clean up resources
   void dispose() {
     stopScan();
-    _deviceStreamController.close();
-    _nativeCallback.close();
+    _scanResultStreamController.close();
+    _scanResultNativeCallback.close();
   }
 }
