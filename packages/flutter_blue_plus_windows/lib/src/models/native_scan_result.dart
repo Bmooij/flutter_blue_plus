@@ -1,4 +1,4 @@
-class ScanResult {
+class NativeScanResult {
   final String name;
   final String macAddress;
   final int rssi;
@@ -6,7 +6,7 @@ class ScanResult {
   final double latitude;
   final double longitude;
 
-  ScanResult({
+  NativeScanResult({
     required this.name,
     required this.macAddress,
     required this.rssi,

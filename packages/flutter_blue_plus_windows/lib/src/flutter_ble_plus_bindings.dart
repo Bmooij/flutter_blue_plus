@@ -1,12 +1,10 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
+import 'package:flutter_blue_plus_platform_interface/flutter_blue_plus_platform_interface.dart';
 
 // imports of the binding models
 import 'binding_models/scan_result_binding.dart';
-
-// imports of the models
-import 'models//scan_result.dart';
 
 // Define the FFI signatures
 typedef RegisterCallbackNative = Void Function(Pointer<NativeFunction<ScanResultCallbackNative>>);
@@ -44,8 +42,8 @@ class FlutterBlePlusBindings {
       .lookupFunction<StopScanNative, StopScanDart>('StopScan');
 
   // Stream controller for device discovery events
-  final _scanResultStreamController = StreamController<ScanResult>.broadcast();
-  Stream<ScanResult> get onScanResult => _scanResultStreamController.stream;
+  final _scanResultStreamController = StreamController<BmScanResponse>.broadcast();
+  Stream<BmScanResponse> get onScanResult => _scanResultStreamController.stream;
 
   // Native callback instance
   late final NativeCallable<ScanResultCallbackNative> _scanResultNativeCallback;
@@ -60,22 +58,47 @@ class FlutterBlePlusBindings {
 
   void _setupCallbacks() {
     // Create a NativeCallable instance with the listener method
-    _scanResultNativeCallback = NativeCallable<ScanResultCallbackNative>.listener(
-          (Pointer<ScanResultBinding> scanResultPtr) async {
+    _scanResultNativeCallback =
+        NativeCallable<ScanResultCallbackNative>.listener(
+      (Pointer<ScanResultBinding> scanResultPtr) async {
+        if (scanResultPtr == nullptr) return;
 
-            if (scanResultPtr == nullptr) return;
+        // Get service UUIDs as strings from the struct
+        final serviceUuidStrings = scanResultPtr.ref.getServiceUuids();
+
+        // Convert strings to Guid objects
+        final serviceUuids = serviceUuidStrings.map((uuidStr) {
+          try {
+            return Guid(uuidStr);
+          } catch (e) {
+            print('Error converting UUID string to Guid: $e');
+            return null;
+          }
+        }).whereType<Guid>().toList();
+
         // Extract data from the struct
-        final scanResult = ScanResult(
-          name: scanResultPtr.ref.name.toDartString(),
-          macAddress: scanResultPtr.ref.macAddress.toDartString(),
-          rssi: scanResultPtr.ref.rssi,
-          manufacturerId: scanResultPtr.ref.manufacturerId,
-          latitude: scanResultPtr.ref.latitude,
-          longitude: scanResultPtr.ref.longitude,
+        final scanResponse = BmScanResponse(
+          advertisements: [
+            BmScanAdvertisement(
+              remoteId: DeviceIdentifier(scanResultPtr.ref.remoteId.toDartString()),
+              platformName: scanResultPtr.ref.name.toDartNullableString(),
+              advName: scanResultPtr.ref.advName.toDartNullableString(),
+              connectable: true,
+              txPowerLevel: null,
+              appearance: null,
+              manufacturerData: {},
+              serviceData: {},
+              serviceUuids: serviceUuids,
+              rssi: 0,
+            ),
+          ],
+          success: true,
+          errorCode: 0,
+          errorString: '',
         );
 
         // Add the device info to the stream
-        _scanResultStreamController.add(scanResult);
+        _scanResultStreamController.add(scanResponse);
 
         // Free the memory allocated in the native code
         _freeScanResultMemory(scanResultPtr);
@@ -101,5 +124,15 @@ class FlutterBlePlusBindings {
     stopScan();
     _scanResultStreamController.close();
     _scanResultNativeCallback.close();
+  }
+}
+
+extension Utf8Pointer on Pointer<Utf8> {
+
+  String? toDartNullableString({int? length}) {
+    if (this == nullptr) {
+     return null;
+    }
+    return toDartString(length: length);
   }
 }

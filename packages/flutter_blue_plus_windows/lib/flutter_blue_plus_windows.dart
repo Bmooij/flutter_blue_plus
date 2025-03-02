@@ -6,19 +6,12 @@ import 'src/flutter_ble_plus_bindings.dart';
 
 final class FlutterBluePlusWindows extends FlutterBluePlusPlatform {
 
-  final _onScanResponseController = StreamController<BmScanResponse>.broadcast();
-
   static final _wrapper = FlutterBlePlusBindings();
 
   @override
-  Stream<BmScanResponse> get onScanResponse {
-    return _onScanResponseController.stream;
-  }
+  Stream<BmScanResponse> get onScanResponse => _wrapper.onScanResult;
 
   FlutterBluePlusWindows._() {
-    _wrapper.onScanResult.listen((scanResult) {
-      print('FROM C# $scanResult');
-    });
   }
 
   static void registerWith() {

@@ -5,10 +5,10 @@ namespace FlutterBlePlus.Models;
 [StructLayout(LayoutKind.Sequential)]
 public struct ScanResult
 {
-    public IntPtr Name;  // Utf8 string pointer
-    public IntPtr MacAddress;  // Utf8 string pointer
+    public IntPtr RemoteId;
+    public IntPtr Name;
+    public IntPtr AdvName;
     public int Rssi;
-    public int ManufacturerId;
-    public float Latitude;
-    public float Longitude;
+    public IntPtr ServiceUuidsPtr; // Pointer to array of strings
+    public int ServiceUuidsCount;  // Count of UUIDs in the array
 }
