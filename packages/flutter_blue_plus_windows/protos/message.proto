@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+message MethodCall {
+  string method = 1;
+  bytes data = 2;
+}
+
+message ScanResult {
+  string remoteId = 1;
+  string name = 2;
+  string advName = 3;
+  int32 rssi = 4;
+  repeated string serviceUuids = 5;
+}

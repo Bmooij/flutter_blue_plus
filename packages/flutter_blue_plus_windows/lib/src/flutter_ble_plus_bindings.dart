@@ -119,6 +119,10 @@ class FlutterBlePlusBindings {
     _stopScan();
   }
 
+  void connect(String remoteId) {
+
+  }
+
   // Clean up resources
   void dispose() {
     stopScan();

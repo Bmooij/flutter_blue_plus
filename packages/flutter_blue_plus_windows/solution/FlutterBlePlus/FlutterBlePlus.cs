@@ -1,7 +1,7 @@
 ﻿using System.Runtime.InteropServices;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.Advertisement;
-using FlutterBlePlus.Models;
+using Google.Protobuf;
 
 namespace FlutterBlePlus;
 
@@ -16,13 +16,34 @@ public static class FlutterBlePlus
     {
         Watcher.Received += WatcherOnReceived;   
     }
+    
+    private static void HandleCall(string methodName, byte[] data)
+    {
+        if (methodName == "StartScan")
+            StartScan(data);
+        else if (methodName == "StopScan")
+            StopScan(data);
+        else
+            throw new ArgumentOutOfRangeException(nameof(methodName), methodName, null);
+    }
+    
+    
+    private static void StartScan(byte[] data)
+    {
+        Watcher.Start();
+    }
+    
+    private static void StopScan(byte[] data)
+    {
+        Watcher.Stop();
+    }
 
     private static async void WatcherOnReceived(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs args)
     {
         try
         {
             // Call the callback if it's registered
-            if (_scanResultCallback == null) return;
+            if (_methodCallback == null) return;
             
             var device = await BluetoothLEDevice.FromBluetoothAddressAsync(args.BluetoothAddress);
             if (device == null) return;
@@ -36,37 +57,16 @@ public static class FlutterBlePlus
             
             var scanResult = new ScanResult
             {
-                RemoteId = Marshal.StringToHGlobalAnsi(device.DeviceId),
-                Name = Marshal.StringToHGlobalAnsi(name),
+                RemoteId = device.DeviceId,
+                Name = name,
                 Rssi = args.RawSignalStrengthInDBm,
-                AdvName = Marshal.StringToHGlobalAnsi(args.Advertisement.LocalName),
-                ServiceUuidsCount = serviceUuids.Count,
-                ServiceUuidsPtr = IntPtr.Zero
+                AdvName = args.Advertisement.LocalName
             };
+            scanResult.ServiceUuids.AddRange(serviceUuids.Select(x => x.ToString()));
             
             Console.WriteLine($"{device.DeviceId} {name} {device.Name} {scanResult.Rssi}");
             
-            // Handle service UUIDs if any
-            if (serviceUuids.Count > 0)
-            {
-                // Allocate memory for an array of IntPtr (pointers to strings)
-                var serviceUuidsArrayPtr = Marshal.AllocHGlobal(serviceUuids.Count * IntPtr.Size);
-            
-                // For each UUID, allocate memory for the string and store pointer in the array
-                for (var i = 0; i < serviceUuids.Count; i++)
-                {
-                    var uuidStringPtr = Marshal.StringToHGlobalAnsi(serviceUuids[i].ToString());
-                    Marshal.WriteIntPtr(serviceUuidsArrayPtr, i * IntPtr.Size, uuidStringPtr);
-                }
-            
-                scanResult.ServiceUuidsPtr = serviceUuidsArrayPtr;
-            }
-            
-            // Allocate memory for the struct and copy the struct to it
-            var deviceInfoPtr = Marshal.AllocHGlobal(Marshal.SizeOf<ScanResult>());
-            Marshal.StructureToPtr(scanResult, deviceInfoPtr, false);
-            
-            _scanResultCallback(deviceInfoPtr);
+            CallMethod("OnScanResult", scanResult);
         }
         catch (Exception e)
         {
@@ -74,57 +74,64 @@ public static class FlutterBlePlus
         }
     }
 
-    [UnmanagedCallersOnly(EntryPoint = "StartScan")]
-    public static void StartScan()
+    [UnmanagedCallersOnly(EntryPoint = "MethodCallHandler")]
+    public static void MethodCallHandler(IntPtr byteArrayPtr, int length)
     {
-        Watcher.Start();
+        // Convert the IntPtr to a managed byte array
+        var managedByteArray = new byte[length];
+        Marshal.Copy(byteArrayPtr, managedByteArray, 0, length);
+    
+        // Now you can work with managedByteArray in your C# code
+        // For example, you could log the array length:
+        Console.WriteLine($"Received byte array of length: {managedByteArray.Length}");
+        
+        var methodCall = MethodCall.Parser.ParseFrom(managedByteArray);
+        HandleCall(methodCall.Method, methodCall.Data.ToByteArray());
     }
-
-    [UnmanagedCallersOnly(EntryPoint = "StopScan")]
-    public static void StopScan()
+    
+    private static void CallMethod(string method, IMessage obj)
     {
-        Watcher.Stop();
+        if (_methodCallback == null) return;
+        
+        var memStream = new MemoryStream();
+        obj.WriteTo(memStream);
+        var objData = memStream.ToArray();
+        
+        var methodCall = new MethodCall
+        {
+            Method = method,
+            Data =  ByteString.CopyFrom(objData)
+        };
+
+        memStream.Position = 0;
+        methodCall.WriteTo(memStream);
+        var bufferData = memStream.ToArray();
+            
+        // Allocate memory for the struct and copy the struct to it
+        var bufferPtr = Marshal.AllocHGlobal(bufferData.Length);
+        // Copy the byte array to the allocated memory
+        Marshal.Copy(bufferData, 0, bufferPtr, bufferData.Length);
+        
+        _methodCallback(bufferPtr, bufferData.Length);
     }
     
     // Define the delegate type that matches the callback signature
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    public delegate void ScanResultCallback(IntPtr deviceInfoPtr);
-    private static ScanResultCallback? _scanResultCallback;
+    public delegate void MethodCallback(IntPtr byteArrayPtr, int length);
+    private static MethodCallback? _methodCallback;
     
-    [UnmanagedCallersOnly(EntryPoint = "RegisterScanResultCallback")]
-    public static void RegisterScanResultCallback(IntPtr callbackPtr)
+    [UnmanagedCallersOnly(EntryPoint = "RegisterMethodCallback")]
+    public static void RegisterMethodCallback(IntPtr callbackPtr)
     {
-        _scanResultCallback = callbackPtr == IntPtr.Zero 
+        _methodCallback = callbackPtr == IntPtr.Zero 
             ? null 
-            : Marshal.GetDelegateForFunctionPointer<ScanResultCallback>(callbackPtr);
+            : Marshal.GetDelegateForFunctionPointer<MethodCallback>(callbackPtr);
     }
 
-    [UnmanagedCallersOnly(EntryPoint = "FreeScanResultMemory")]
-    public static void FreeScanResultMemory(IntPtr scanResultPtr)
+    [UnmanagedCallersOnly(EntryPoint = "FreeMethodCallback")]
+    public static void FreeMethodCallback(IntPtr bufferPtr)
     {
-        if (scanResultPtr == IntPtr.Zero) return;
-        // Get the struct to free the string pointers
-        var deviceInfo = Marshal.PtrToStructure<ScanResult>(scanResultPtr);
-
-        Marshal.FreeHGlobal(deviceInfo.RemoteId);
-        Marshal.FreeHGlobal(deviceInfo.Name);
-        Marshal.FreeHGlobal(deviceInfo.AdvName);
-
-        // Free service UUID strings and the array
-        if (deviceInfo.ServiceUuidsPtr != IntPtr.Zero && deviceInfo.ServiceUuidsCount > 0)
-        {
-            for (var i = 0; i < deviceInfo.ServiceUuidsCount; i++)
-            {
-                var uuidStringPtr = Marshal.ReadIntPtr(deviceInfo.ServiceUuidsPtr, i * IntPtr.Size);
-                if (uuidStringPtr != IntPtr.Zero)
-                {
-                    Marshal.FreeHGlobal(uuidStringPtr);
-                }
-            }
-            Marshal.FreeHGlobal(deviceInfo.ServiceUuidsPtr);
-        }
-
-        // Free the struct memory
-        Marshal.FreeHGlobal(scanResultPtr);
+        if (bufferPtr == IntPtr.Zero) return;
+        Marshal.FreeHGlobal(bufferPtr);
     }
 }

@@ -51,4 +51,11 @@ final class FlutterBluePlusWindows extends FlutterBluePlusPlatform {
     _wrapper.stopScan();
     return Future.value(true);
   }
+
+  Future<bool> connect(
+      BmConnectRequest request,
+      ) {
+    _wrapper.connect(request.remoteId.toString());
+    return Future.value(false);
+  }
 }
